@@ -314,7 +314,8 @@ void websocket_protocol::initiate(t_initiate_cb cb)
 
   std::ostringstream oss;
   oss <<
-    "GET / HTTP/1.1\r\n"
+  /* TODO: allow user to provide resource path */
+    "GET /ws HTTP/1.1\r\n"
     "Pragma: no-cache\r\n"
     "Cache-Control: no-cache\r\n"
     "Upgrade: websocket\r\n"
@@ -331,7 +332,8 @@ void websocket_protocol::initiate(t_initiate_cb cb)
     case options::host_header_mode::omit : /* nothing to add to header */ break;
   }
   oss <<
-    "Origin: " << hostname() << "\r\n"
+/* TODO: disable Origin by default, or else, properly format */
+//    "Origin: " << hostname() << "\r\n"
     "Sec-WebSocket-Key: " << sec_websocket_key  << "\r\n"
     "Sec-WebSocket-Protocol: ";
 

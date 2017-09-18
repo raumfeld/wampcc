@@ -993,9 +993,10 @@ std::future<void> wamp_session::hello(client_credentials cc)
       opt[ "agent" ] = package_string();
       opt[ "authid"] = std::move(cc.authid);
 
-      json_array& ja = json_insert<json_array>(opt, "authmethods");
-      for (auto item : cc.authmethods)
-        ja.push_back( std::move(item) );
+      /* TODO: if no user & password provided, dont offer WAMPCRA */
+      // json_array& ja = json_insert<json_array>(opt, "authmethods");
+      // for (auto item : cc.authmethods)
+      //   ja.push_back( std::move(item) );
 
       send_msg( msg );
     };
