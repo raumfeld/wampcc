@@ -77,6 +77,17 @@ void rpc_man::handle_inbound_register(wamp_session& ws, t_request_id request_id,
 }
 
 
+bool rpc_man::allow_replace_rpc(const json_object& prev,
+                               const json_object& next) const {
+
+  auto prevIt = prev.find("invoke");
+  if (prevIt == prev.end() || prevIt->second != "replace")
+    return false;
+
+  auto nextIt = next.find("invoke");
+  return nextIt != next.end() && nextIt->second == prevIt->second;
+}
+
 void rpc_man::register_rpc(session_handle session, std::string realm,
                            rpc_details& r) {
   if (r.uri.empty())
@@ -90,21 +101,41 @@ void rpc_man::register_rpc(session_handle session, std::string realm,
   map_uri_to_rpc& realm_index = m_realm_registry[realm];
 
   auto rpc_iter = realm_index.find(r.uri);
-  if (rpc_iter != realm_index.end()) {
-    LOG_WARN("ignoring duplicate procedure registration for " << realm << ":"
-                                                              << r.uri);
+  if (rpc_iter != realm_index.end() && !allow_replace_rpc(rpc_iter->second->options, r.options)) {
+    LOG_WARN("ignoring duplicate procedure registration for " << realm << ":" << r.uri);
     throw wamp_error(WAMP_ERROR_PROCEDURE_ALREADY_EXISTS);
   }
 
-  r.registration_id = m_next_regid++;
-  std::shared_ptr<rpc_details> rpc = std::make_shared<rpc_details>(r);
-  realm_index.insert(std::make_pair(rpc->uri, rpc));
-
   auto& rpcs_for_session = m_session_to_rpcs[session];
-  rpcs_for_session[rpc->registration_id] = std::move(rpc);
 
-  LOG_INFO("procedure registered, " << r.registration_id << ", " << realm
-                                    << "::" << r.uri);
+  r.registration_id = m_next_regid++;
+
+  if (rpc_iter == realm_index.end()) {
+    std::shared_ptr<rpc_details> rpc = std::make_shared<rpc_details>(r);
+    realm_index.insert(std::make_pair(rpc->uri, rpc));
+
+    rpcs_for_session[rpc->registration_id] = std::move(rpc);
+
+    LOG_INFO("procedure registered, " << r.registration_id << ", " << realm
+                                         << "::" << r.uri);
+  }
+  else {
+    LOG_WARN("replacing previous procedure registration for " << realm << ":"
+                                                                 << r.uri);
+    // mark old rpc as removed
+    auto session_iter = m_session_to_rpcs.find(rpc_iter->second->session);
+    if (session_iter != m_session_to_rpcs.end())
+    {
+      auto old_rpc = session_iter->second.find(rpc_iter->second->registration_id);
+      if (old_rpc != session_iter->second.end())
+      {
+        old_rpc->second = std::make_shared<rpc_details>();
+      }
+    }
+
+    *rpc_iter->second = r;
+    rpcs_for_session[r.registration_id] = rpc_iter->second;
+  }
 }
 
 
@@ -124,7 +155,7 @@ void rpc_man::session_closed(std::shared_ptr<wamp_session>& session) {
                  << "::" << rpc_item.second->uri);
 
         /* Perform user-defined call-back, if present. */
-        if (m_rpc_removed_cb)
+        if (m_rpc_removed_cb && rpc_item.second->registration_id)
             m_rpc_removed_cb(*(rpc_item.second));
 
         /* remove from realm index */
@@ -149,18 +180,20 @@ void rpc_man::handle_inbound_unregister(wamp_session& session,
   if (session_iter != m_session_to_rpcs.end()) {
     auto rpc_iter = session_iter->second.find(registration_id);
     if (rpc_iter != session_iter->second.end()) {
-      LOG_INFO("procedure unregistered, " //
-               << rpc_iter->second->registration_id << ", " << session.realm()
-               << "::" << rpc_iter->second->uri);
+      if (rpc_iter->second->registration_id) {
+        LOG_INFO("procedure unregistered, " //
+                 << rpc_iter->second->registration_id << ", " << session.realm()
+                 << "::" << rpc_iter->second->uri);
 
-      /* Perform user-defined call-back, if present. */
-      if (m_rpc_removed_cb)
+        /* Perform user-defined call-back, if present. */
+        if (m_rpc_removed_cb)
           m_rpc_removed_cb(*(rpc_iter->second));
 
-      /* remove from realm index */
-      auto realm_iter = m_realm_registry.find(session.realm());
-      if (realm_iter != m_realm_registry.end())
-        realm_iter->second.erase(rpc_iter->second->uri);
+        /* remove from realm index */
+        auto realm_iter = m_realm_registry.find(session.realm());
+        if (realm_iter != m_realm_registry.end())
+          realm_iter->second.erase(rpc_iter->second->uri);
+      }
 
       /* remove from session index */
       session_iter->second.erase(rpc_iter);

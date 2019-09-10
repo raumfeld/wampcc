@@ -56,6 +56,7 @@ private:
   rpc_man& operator=(const rpc_man&) = delete;
 
   void register_rpc(session_handle, std::string realm, rpc_details& r);
+  bool allow_replace_rpc(const json_object& prev, const json_object& next) const;
 
   logger& __logger; /* name chosen for log macros */
   rpc_added_cb m_rpc_added_cb;
