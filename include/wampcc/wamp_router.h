@@ -118,11 +118,13 @@ public:
       tcp_socket::addr_family = tcp_socket::addr_family::unspec);
 
   /** Asynchronously accept, on given port, using IPv4 */
-  std::future<uverr> listen(auth_provider auth, int port);
+  std::future<uverr> listen(auth_provider auth, int port,
+                            const protocol::options& protocol_options = {});
 
   /** Generic listen method. Use this option to enable use of SSL, and to have
    * finer control over which WAMP protocols will be permitted.  */
-  std::future<uverr> listen(auth_provider auth, const listen_options&);
+  std::future<uverr> listen(auth_provider auth, const listen_options&,
+                            const protocol::options& protocol_options = {});
 
   /** Publish to an internal topic */
   void publish(const std::string& realm, const std::string& uri,

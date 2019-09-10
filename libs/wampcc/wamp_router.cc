@@ -81,12 +81,12 @@ std::future<uverr> wamp_router::listen(const std::string& node,
 }
 
 
-std::future<uverr> wamp_router::listen(auth_provider auth, int p)
+std::future<uverr> wamp_router::listen(auth_provider auth, int p, const protocol::options& options)
 {
   return listen(std::move(auth),
                 {false, wampcc::all_protocols, wampcc::all_serialisers,
                  "", std::to_string(p),
-                    tcp_socket::addr_family::inet4,{}});
+                    tcp_socket::addr_family::inet4,{}}, options);
 }
 
 
@@ -315,12 +315,12 @@ void wamp_router::check_has_closed()
 }
 
 std::future<uverr> wamp_router::listen(auth_provider auth,
-                                       const listen_options& listen_opts)
+                                       const listen_options& listen_opts, const protocol::options& protocol_options)
 {
   if (listen_opts.ssl && m_kernel->get_ssl() == nullptr)
     throw std::runtime_error("wampcc kernel SSL context is null; can't use SSL");
 
-  auto on_new_client = [this, auth, listen_opts](std::unique_ptr<tcp_socket> sock) {
+  auto on_new_client = [this, auth, listen_opts, protocol_options](std::unique_ptr<tcp_socket> sock) {
     /* IO thread */
 
     /* This lambda is invoked the when a socket has been accepted. */
@@ -348,7 +348,7 @@ std::future<uverr> wamp_router::listen(auth_provider auth,
 
         json_object details;
 
-        /* The caller want's to disclose it's identiry but the policy is not to */
+        /* The caller want's to disclose it's identity but the policy is not to */
         auth_provider::disclosure disclose_me = auth_provider::disclosure::optional;
         auto iter_disclose_me = options.find("disclose_me");
         const bool found_disclose_me = (iter_disclose_me != options.end());
@@ -429,10 +429,11 @@ std::future<uverr> wamp_router::listen(auth_provider auth,
 
     auto fd = sock->fd_info().second;
 
-    protocol_builder_fn builder_fn = [this, listen_opts](tcp_socket* sock,
+    protocol_builder_fn builder_fn = [this, listen_opts, protocol_options](tcp_socket* sock,
                                                          protocol::t_msg_cb _msg_cb,
                                                          protocol::protocol_callbacks cb) {
       selector_protocol::options selector_opts;
+      static_cast<protocol::options&>(selector_opts) = protocol_options;
       selector_opts.protocols = listen_opts.protocols;
       selector_opts.serialisers = listen_opts.serialisers;
       std::unique_ptr<protocol> up(
